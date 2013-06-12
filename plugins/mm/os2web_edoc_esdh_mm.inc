@@ -40,8 +40,27 @@ function os2web_edoc_esdh_mm_get_import_list() {
   foreach (file_scan_directory(variable_get('os2web_edoc_esdh_mm_path', MM_IMPORT_DIR), '/\.xml$/i', array('recurse' => TRUE)) as $xml_file) {
     $uris[] = array('id' => dirname($xml_file->uri), 'uri' => $xml_file->uri);
   }
-error_log(print_r($xml_file, 1 ));
+#error_log(print_r($xml_file, 1 ));
   return $uris;
+}
+
+
+/**
+ * Strip illegal characters from the XML. 
+ * Ex &#xC = ASCII new line feed
+ * 
+ * @param object $string
+ *   string to sanitise
+ * 
+ * $return array
+ *   The string sanitised 
+ */
+function utf8_for_xml($string)
+{
+    #$replace_me = "&#xC;";
+    $replace_me =  variable_get('os2web_edoc_esdh_banned_special_char');
+    $str_new = str_replace($replace_me, "", $string);
+    return $str_new;
 }
 
 /**
@@ -60,16 +79,28 @@ function os2web_edoc_esdh_mm_import_meeting($meeting) {
   }
   $meetings = array();
   if (is_file(drupal_realpath($file))) {
-    $manifest = simplexml_load_file(drupal_realpath($file));
+    
+    libxml_use_internal_errors(true);
+    $manifest = simplexml_load_string(utf8_for_xml(file_get_contents(drupal_realpath($file))), 'SimpleXMLElement', LIBXML_NOWARNING); 
+
+    libxml_clear_errors();
+    libxml_use_internal_errors(false);
+
+    if ($manifest === false) {
+       error_log("Failed loading XML");
+       foreach(libxml_get_errors() as $error) {
+          error_log ($error->message);
+       }
+    }
+
     if (is_object($manifest)) {
       $committee = (string) array_shift($manifest->xpath("/Meeting/Committee"));
       $meeting_date = (string) array_shift($manifest->xpath("/Meeting/MeetingDate"));
       $directory_name = dirname(drupal_realpath($file));
-
       // Check if the committee is allowed to publish.
-      $publish_committee = array_map('trim', explode(',', variable_get('os2web_meetings_approved_committee', MM_DEFAULT_APPROVED)));
+      $publish_committee = array_map('trim', explode(',', variable_get('os2web_edoc_esdh_approved_committees', MM_DEFAULT_APPROVED)));
       if ($committee == '' || !in_array($committee, $publish_committee)) {
-        watchdog('eDoc MM', 'Ignored agenda from %committee .', array('%committee' => $committee));
+        watchdog('eDoc MM', 'Ignored agenda from "%committee" .', array('%committee' => $committee));
         return FALSE;
       }
 
@@ -78,49 +109,31 @@ function os2web_edoc_esdh_mm_import_meeting($meeting) {
       date_timezone_set($date_obj, timezone_open('UTC'));
       $meeting_date = date_format($date_obj, 'Y-m-d H:i');
 
-      // Handle type of meeting.
-        // Type:
-        // switch ($info['type']) {
-        //   case 1:
-        //     $meeting['type'] = 'Dagsorden';
-        //     break;
-
-        //   case 2:
-        //     $meeting['type'] = 'Referat';
-        //     break;
-
-        //   default:
-        //     $meeting['type'] = 'Anden';
-        //     watchdog('eDoc MM', 'Unknown meeting type value: %type', array('%type' => $meeting['type']), WATCHDOG_WARNING);
-        // }
-
       $meeting = array(
         'sys_id' => $directory_name,
         'committee' => $committee,
         'title' => $committee,
+        'uri' => strstr($file , 'eDocAgendaPublishing.xml', TRUE),
         'meeting_date' => $meeting_date,
       );
-error_log(print_r(array('committee' => $committee, 'date' => $meeting_date), 1));
-      $meeting_agendas = $manifest->xpath("/Meeting/MeetingAgendaTypes");
+      $meeting_agendas = $manifest->xpath("/Meeting/MeetingAgendaTypes/MeetingAgendaType/MeetingAgendaItems");
+      $meeting_state = $manifest->xpath('/Meeting/MeetingState');
+      $meeting['state'] = (string) $meeting_state[0];
+      $meeting_type = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/AgendaType');
+      $meeting['type'] = (string) $meeting_type[0];
+      $meeting_pdf = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/PDFDocument');
+      $meeting['pdf'] = (string) $meeting_pdf[0];
       if (empty($meeting_agendas)) {
         watchdog('eDoc MM', 'Empty list of import items in %file.', array('%file' => $file), WATCHDOG_WARNING);
       }
 
       foreach ($meeting_agendas as $meeting_agenda) {
-
         $imported = _os2web_edoc_esdh_mm_import_meeting_agenda($meeting, $meeting_agenda);
-
+error_log("du er her");
         if (is_array($imported)) {
           $imported['publish'] = TRUE;
           $meetings[] = $imported;
         }
-        // else {
-        //   // Publication not published or public.
-        //   $meetings[] = array(
-        //     'system_id' => $agendainfo['sysid'],
-        //     'publish' => FALSE,
-        //   ) + os2web_esdh_provider_default_meeting();
-        // }
       }
     }
     else {
@@ -143,29 +156,16 @@ error_log(print_r(array('committee' => $committee, 'date' => $meeting_date), 1))
  *   Meeting_struct array for an accepted import, else FALSE
  */
 function _os2web_edoc_esdh_mm_import_meeting_agenda(&$meeting, $agenda_xml) {
-  $xml_item_pdf = (string) array_shift($agenda_xml->xpath('/PDFDocument'));
-  $xml_item_type = (string) array_shift($agenda_xml->xpath('/AgendaType'));
-
   $meeting['items'] = array();
-  $meeting['type'] = $xml_item_type;
-
-
-  $pdf_uri = implode('/', array(
-    variable_get('os2web_edoc_esdh_mm_path', MM_IMPORT_DIR),
-    $meeting['sys_id'],
-    $xml_item_pdf,
-  ));
-
-error_log(print_r($agendainfo, 1));
 
   // Only add the agenda if its PDF exists.
-  if (file_exists(drupal_realpath($pdf_uri))) {
+  if (file_exists(drupal_realpath($meeting['uri'] . $meeting['pdf']))) {
     $agenda['full_doc'] = array(
-      'uri' => $pdf_uri,
+      'uri' => $meeting['uri'] . $meeting['pdf'],
       'title' => $meeting['committee'],
     );
     // Import all agenda items.
-    foreach ($agenda_xml->xpath("/MeetingAgendaItems") as $agenda_item) {
+    foreach ($agenda_xml->xpath("/MeetingAgendaItems/MeetingAgendaItem") as $agenda_item) {
       if (($item = _os2web_edoc_esdh_mm_import_meeting_agenda_item($meeting, $agenda_item)) !== FALSE) {
         $agenda['items'][] = $item;
       }

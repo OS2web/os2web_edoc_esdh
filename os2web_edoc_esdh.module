@@ -7,8 +7,9 @@
 
 include_once('os2web_edoc_esdh.features.inc');
 
-define('MM_IMPORT_DIR', 'public://sbsys');
+define('MM_IMPORT_DIR', 'public://edoc');
 define('MM_DEFAULT_APPROVED', '62,59,64,53,54,56,57,63,58,51,55,61,68,69,42');
+define('MM_DEFAULT_BANNED_CHAR', '&#xC;');
 
 /**
  * Implements hook_ctools_plugin_directory().
@@ -37,7 +38,7 @@ function os2web_edoc_esdh_form_os2web_settings_settings_form_alter(&$form, &$for
   );
   $form['meetings']['os2web_edoc_esdh_mm_path'] = array(
     '#type' => 'textfield',
-    '#title' => 'Sti til sbsys publish folder.',
+    '#title' => 'Sti til edoc publish folder.',
     '#description' => 'Dette er stien hvor ESDH publisere .XML filer til.',
     '#default_value' => variable_get('os2web_edoc_esdh_mm_path', MM_IMPORT_DIR),
   );
@@ -48,6 +49,13 @@ function os2web_edoc_esdh_form_os2web_settings_settings_form_alter(&$form, &$for
     '#description' => 'Komma sepereret liste over udvalgs-id der er godkendt til publisering.',
     '#default_value' => variable_get('os2web_edoc_esdh_approved_committees', MM_DEFAULT_APPROVED),
   );
+  $form['meetings']['os2web_edoc_esdh_banned_special_char'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Ikke standard XML tegn der skal fjernes ved import',
+    '#maxlength' => 200,
+    '#description' => 'Komma sepereret liste over ikke standard tegn der skal fjernes ved import.',
+    '#default_value' => variable_get('os2web_edoc_esdh_banned_special_char', MM_DEFAULT_BANNED_CHAR),
+  );
 }
 
 /**
@@ -56,7 +64,7 @@ function os2web_edoc_esdh_form_os2web_settings_settings_form_alter(&$form, &$for
 function os2web_edoc_esdh_os2web_help($sections) {
 
   // Content types.
-  $sections['configuration'] = t('<p><a href="@url" target="_blank">See the advanced documentation for sbsys</a></p>', array('@url' => url('admin/help/os2web_edoc_esdh')));
+  $sections['configuration'] = t('<p><a href="@url" target="_blank">See the advanced documentation for edoc</a></p>', array('@url' => url('admin/help/os2web_edoc_esdh')));
   return $sections;
 }
 
@@ -67,6 +75,6 @@ function os2web_edoc_esdh_help($path, $arg) {
   switch ($path) {
     case 'admin/help#os2web_edoc_esdh':
       // TODO.
-      return t('Missing documentation.');
+      return t('Se the OS2web documentation under "help" for details.');
   }
 }
