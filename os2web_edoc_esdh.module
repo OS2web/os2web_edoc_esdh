@@ -64,9 +64,14 @@ function os2web_edoc_esdh_form_os2web_settings_settings_form_alter(&$form, &$for
 function os2web_edoc_esdh_os2web_help($sections) {
 
   // Content types.
-  $sections['configuration'] = t('<p><a href="@url" target="_blank">See the advanced documentation for edoc</a></p>', array('@url' => url('admin/help/os2web_edoc_esdh')));
+  $sections['contenttype'] .= t('<p><b>Meeting node:</b> Add <a href="@url" target="_blank">meetings</a> directly.<br /><i><a href="@edoc" target="_blank">See the advanced documentation for the OS2web eDoc module</a>(.pdf)</i></p>', array('@url' => url('node/add/os2web_meetings_meeting'), '@edoc' => file_create_url(drupal_get_path('module', 'os2web_edoc_esdh') . '/os2web_edoc_modul_setup.pdf')));
+  $sections['import'] .= t('<p><b>Import agenades:</b> <a href="@edoc" target="_blank">See the advanced documentation for the OS2web eDoc module import</a>(.pdf)</i></p>', array('@url' => url('node/add/os2web_meetings_meeting'), '@edoc' => file_create_url(drupal_get_path('module', 'os2web_edoc_esdh') . '/os2web_edoc_modul_setup.pdf')));
+  $sections['documentation'] .= t('<p><b>PDF documentation for edoc:</b> <a href="@edoc" target="_blank">Documentation for the OS2web eDoc module</a>(.pdf)</i></p>', array('@url' => url('node/add/os2web_meetings_meeting'), '@edoc' => file_create_url(drupal_get_path('module', 'os2web_edoc_esdh') . '/os2web_edoc_modul_setup.pdf')));
   return $sections;
+
 }
+
+
 
 /**
  * Implements hook_help().
@@ -75,6 +80,6 @@ function os2web_edoc_esdh_help($path, $arg) {
   switch ($path) {
     case 'admin/help#os2web_edoc_esdh':
       // TODO.
-      return t('Se the OS2web documentation under "help" for details.');
+      return t('Se the OS2web documentation under "help" for details. If you don not have that please activate the OS2web Help module');
   }
 }
