@@ -118,18 +118,18 @@ function os2web_edoc_esdh_mm_import_meeting($meeting) {
       );
       $meeting_agendas = $manifest->xpath("/Meeting/MeetingAgendaTypes/MeetingAgendaType/MeetingAgendaItems");
       $meeting_state = $manifest->xpath('/Meeting/MeetingState');
-      $meeting['state'] = (string) $meeting_state[0];
       $meeting_type = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/AgendaType');
-      $meeting['type'] = (string) $meeting_type[0];
       $meeting_pdf = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/PDFDocument');
+      $meeting['state'] = (string) $meeting_state[0];
+      $meeting['type'] = (string) $meeting_type[0];
       $meeting['pdf'] = (string) $meeting_pdf[0];
       if (empty($meeting_agendas)) {
         watchdog('eDoc MM', 'Empty list of import items in %file.', array('%file' => $file), WATCHDOG_WARNING);
       }
 
       foreach ($meeting_agendas as $meeting_agenda) {
+  #error_log(print_r($meeting_agenda, 1));
         $imported = _os2web_edoc_esdh_mm_import_meeting_agenda($meeting, $meeting_agenda);
-error_log("du er her");
         if (is_array($imported)) {
           $imported['publish'] = TRUE;
           $meetings[] = $imported;
@@ -157,7 +157,7 @@ error_log("du er her");
  */
 function _os2web_edoc_esdh_mm_import_meeting_agenda(&$meeting, $agenda_xml) {
   $meeting['items'] = array();
-
+  $agenda = $meeting;
   // Only add the agenda if its PDF exists.
   if (file_exists(drupal_realpath($meeting['uri'] . $meeting['pdf']))) {
     $agenda['full_doc'] = array(
@@ -165,9 +165,14 @@ function _os2web_edoc_esdh_mm_import_meeting_agenda(&$meeting, $agenda_xml) {
       'title' => $meeting['committee'],
     );
     // Import all agenda items.
-    foreach ($agenda_xml->xpath("/MeetingAgendaItems/MeetingAgendaItem") as $agenda_item) {
+  #error_log(print_r($agenda_xml, 1));
+  $agenda_bullet = $agenda_xml;
+  #error_log(print_r($agenda_xml, 1));
+    foreach ($agenda_bullet->MeetingAgendaItem as $agenda_item) {
+        #error_log(print_r($agenda_item, 1));
       if (($item = _os2web_edoc_esdh_mm_import_meeting_agenda_item($meeting, $agenda_item)) !== FALSE) {
         $agenda['items'][] = $item;
+       ## error_log(print_r($agenda_item, 1));
       }
     }
     // Apply defaults, just in case we missed something.
@@ -191,27 +196,29 @@ function _os2web_edoc_esdh_mm_import_meeting_agenda(&$meeting, $agenda_xml) {
  *   The imported item.
  */
 function _os2web_edoc_esdh_mm_import_meeting_agenda_item($meeting, $xml) {
-  $xml_item_number = (int) array_shift($xml->xpath("/AgendaItemNumber"));
-  $xml_item_pdf = (string) array_shift($agenda_xml->xpath('/PDFDocument'));
-  $xml_item_name = (string) array_shift($agenda_xml->xpath('/Document/NeutralTitle'));
-  $document_type = (string) array_shift($agenda_xml->xpath('/Document/PublishingType'));
+  $xml_item['number'] = (int) $xml->AgendaItemNumber;
+  $xml_item['pdf'] = (string) $xml->PDFDocument;
+  $xml_item_document = $xml->Document;
+  $xml_item['name'] = (string) $xml_item_document->NeutralTitle;
+  $xml_item['document_type'] = (string) $xml_item_document->PublishingType;
 
+#error_log(print_r($meeting, 1));
   $item = array(
-    'id' => $xml_item_number,
-    'title' => 'Punkt ' . $xml_item_number . ' ' . $xml_item_name,
-    'access' => $document_type,
+    'id' => $xml_item['number'],
+    'title' => 'Punkt ' . $xml_item['number'] . ' ' . $xml_item['name'],
+    'access' => $xml_item['document_type'],
     'bullets' => array(),
     'enclosures' => array(),
     'doc' => array(
       'uri' => implode('/', array(
-        variable_get('os2web_edoc_esdh_mm_path', MM_IMPORT_DIR),
-        $meeting['sys_id'],
-        $xml_item_pdf)),
-      'title' => $xml_item_name,
+        trim($meeting['uri'], "/"),
+        $xml_item['pdf'])),
+     'title' => $xml_item['name'],
     ),
   );
+
   // Deny closed content.
-  if ($document_type === 'SKAL PUBLICERES') {
+  if ($item['access'] === 'SKAL PUBLICERES') {
     // Process attachments.
     // foreach ($xml->xpath("table[@name='bullet']") as $bullet_xml) {
     //   if (($bullet = _os2web_edoc_esdh_import_bullet($info, $bullet_xml)) !== FALSE) {
@@ -224,21 +231,26 @@ function _os2web_edoc_esdh_mm_import_meeting_agenda_item($meeting, $xml) {
     //   }
     // }
     // Process attachments.
-    foreach ($xml->xpath("/Document/Attachments']") as $enclosure) {
-      $filename_in = (string) array_shift($enclosure->xpath("/PDFDocument"));
-      $access = (string) array_shift($enclosure->xpath("/PublishingType"));
-      if (strlen($filename_in) > 0 && $access === 'SKAL PUBLICERES') {
-        $item['enclosures'][] = array(
-          'uri' => implode('/', array(
-            variable_get('os2web_edoc_esdh_mm_path', MM_IMPORT_DIR),
-            $info['filesfolder'],
-            $filename_in)),
-          'title' => trim((string) array_shift($enclosure->xpath("/NeutralTitle"))),
-          'access' => TRUE,
-        );
+#error_log(print_r($xml_item_document->Attachments, 1 )); 
+    foreach ($xml_item_document->Attachments as $enclosures) {
+        #error_log(print_r($enclosure, 1 )); 
+      foreach ($enclosures->Attachment as $enclosure) {
+        #error_log(print_r($enclosure, 1 )); 
+        $enclosure_item['filename_in'] = (string) $enclosure->PDFDocument;
+        $enclosure_item['access'] = (string) $enclosure->PublishingType;
+        if (strlen($enclosure_item['filename_in']) > 0 && $enclosure_item['access'] === 'SKAL PUBLICERES') {
+          $item['enclosures'][] = array(
+            'uri' => implode('/', array(
+              trim($meeting['uri'], "/"),
+              $enclosure_item['filename_in'])),
+            'title' => trim((string) $enclosure->NeutralTitle),
+            'access' => TRUE,
+          );
+        }
       }
     }
   }
+  #error_log(print_r($item, 1));
   $item += os2web_esdh_provider_default_item();
   return $item;
 }
@@ -283,19 +295,19 @@ function _os2web_edoc_esdh_mm_order_addenums($drush = FALSE) {
   // Find all meetings and gather meeting and agenda_ids.
   $query = new EntityFieldQuery();
   $query->entityCondition('entity_type', 'node', '=')
-        ->propertyCondition('type', 'meeting', '=');
+        ->propertyCondition('type', 'os2web_meetings_meeting', '=');
   $nodes_result = $query->execute();
 
   if (!isset($nodes_result['node'])) {
     return;
   }
   $nodes = $nodes_result['node'];
-
+  error_log(print_r($nodes, 1));
   // Load necessary fields into the node object.
   $fields = field_info_instances('node', 'meeting');
-  field_attach_load('node', $nodes, FIELD_LOAD_CURRENT, array('field_id' => $fields['field_addenum_to']['field_id']));
-  field_attach_load('node', $nodes, FIELD_LOAD_CURRENT, array('field_id' => $fields['field_meeting_id']['field_id']));
-  field_attach_load('node', $nodes, FIELD_LOAD_CURRENT, array('field_id' => $fields['field_meeting_sub_id']['field_id']));
+  field_attach_load('node', $nodes, FIELD_LOAD_CURRENT, array('field_id' => $fields['field_os2web_meetings_addendum']['field_id']));
+  field_attach_load('node', $nodes, FIELD_LOAD_CURRENT, array('field_id' => $fields['field_os2web_meetings_id']['field_id']));
+  field_attach_load('node', $nodes, FIELD_LOAD_CURRENT, array('field_id' => $fields['field_os2web_meetings_sub_id']['field_id']));
 
   // Meetings as: $meetings[<meeting_id>][<system_id>][<node_id>] .
   $meetings = array();
@@ -305,12 +317,12 @@ function _os2web_edoc_esdh_mm_order_addenums($drush = FALSE) {
   $debug && error_log('MM Import - Retrieve nodes with addendums from ' . count($nodes) . ' nodes - ' . timer_read('_os2web_edoc_esdh_mm_order_addenums') . 'ms - ' . memory_get_usage());
   // Loop through all meeting nodes, and generate an array with meeting grouped.
   foreach ($nodes as $node) {
-    $addenum_to = field_get_items('node', $node, 'field_addenum_to');
+    $addenum_to = field_get_items('node', $node, 'field_os2web_meetings_addendum');
     if (isset($addenum_to[0]['nid']) && is_numeric($addenum_to[0]['nid'])) {
       $nids_with_addendums[$node->nid] = $node->nid;
     }
-    $meeting_id = field_get_items('node', $node, 'field_meeting_id');
-    $meeting_sub_id = field_get_items('node', $node, 'field_meeting_sub_id');
+    $meeting_id = field_get_items('node', $node, 'field_os2web_meetings_id');
+    $meeting_sub_id = field_get_items('node', $node, 'field_os2web_meetings_sub_id');
     if (!isset($meeting_id[0]['value']) || !isset($meeting_sub_id[0]['value'])) {
       $debug && error_log('MM Import - Missing meeting_id or meeting_sub_id for nid=' . $node->nid);
       continue;
@@ -335,22 +347,22 @@ function _os2web_edoc_esdh_mm_order_addenums($drush = FALSE) {
     }
     // Lowest system id is primary.
     $primary = $nodes[array_shift($meeting)];
-    $addenum_to = field_get_items('node', $primary, 'field_addenum_to');
+    $addenum_to = field_get_items('node', $primary, 'field_os2web_meetings_addendum');
     if (!empty($addenum_to[0]['nid'])) {
-      $primary->field_addenum_to[LANGUAGE_NONE] = array();
+      $primary->field_os2web_meetings_addendum[LANGUAGE_NONE] = array();
       node_save($primary);
     }
     while ($next = array_shift($meeting)) {
       // Set up references for addenum agendas.
       $node = $nodes[$next];
       if ($primary) {
-        $addenum_to = field_get_items('node', $node, 'field_addenum_to');
+        $addenum_to = field_get_items('node', $node, 'field_os2web_meetings_addendum');
         $addenum_to = is_array($addenum_to) ? array_shift(array_shift($addenum_to)) : FALSE;
         // Save time by only updating what is needed.
         if ($addenum_to != $primary->nid) {
-          // error_log(basename(__FILE__) . ':' . __LINE__ . ' Var: $primary = ' . print_r($primary->nid, 1));
-          // error_log(basename(__FILE__) . ':' . __LINE__ . ' Var: $addenum_to = ' . print_r($addenum_to, 1));
-          $node->field_addenum_to[LANGUAGE_NONE][0]['nid'] = $primary->nid;
+           error_log(basename(__FILE__) . ':' . __LINE__ . ' Var: $primary = ' . print_r($primary->nid, 1));
+           error_log(basename(__FILE__) . ':' . __LINE__ . ' Var: $addenum_to = ' . print_r($addenum_to, 1));
+          $node->field_os2web_meetings_addendum[LANGUAGE_NONE][0]['nid'] = $primary->nid;
           node_save($node);
         }
       }
@@ -377,7 +389,7 @@ function _os2web_edoc_esdh_mm_order_addenums($drush = FALSE) {
   foreach ($nids_with_addendums as $nid) {
     // Load the node from the local variable.
     $node = $nodes[$nid];
-    $node->field_addenum_to = array();
+    $node->field_os2web_meetings_addendum = array();
     node_save($node);
     if ($drush === TRUE) {
       drush_log("Resetting $nid..", 'ok');
