@@ -199,10 +199,12 @@ function _os2web_edoc_esdh_mm_import_meeting_agenda_item($meeting, $xml) {
   $xml_item['number'] = (int) $xml->AgendaItemNumber;
   $xml_item['pdf'] = (string) $xml->PDFDocument;
   $xml_item_document = $xml->Document;
+  $xml_item_bullet = $xml_item_document->AgendaItems;
+  $xml_item_fulltext = (string) $xml->FullText; 
   $xml_item['name'] = (string) $xml_item_document->NeutralTitle;
   $xml_item['document_type'] = (string) $xml_item_document->PublishingType;
-
-#error_log(print_r($meeting, 1));
+  //  error_log(print_r("FullText => ".$xml_item_bullet, 1));
+  // error_log(print_r($meeting, 1));
   $item = array(
     'id' => $xml_item['number'],
     'title' => 'Punkt ' . $xml_item['number'] . ' ' . $xml_item['name'],
@@ -213,29 +215,28 @@ function _os2web_edoc_esdh_mm_import_meeting_agenda_item($meeting, $xml) {
       'uri' => implode('/', array(
         trim($meeting['uri'], "/"),
         $xml_item['pdf'])),
-     'title' => $xml_item['name'],
+    // 'title' => $xml_item['name'],
+    // 'body' => $xml_item_fulltext,
     ),
   );
 
   // Deny closed content.
   if ($item['access'] === 'SKAL PUBLICERES') {
     // Process attachments.
-    // foreach ($xml->xpath("table[@name='bullet']") as $bullet_xml) {
-    //   if (($bullet = _os2web_edoc_esdh_import_bullet($info, $bullet_xml)) !== FALSE) {
-    //     if (is_int($bullet['sort']) && $bullet['sort'] > 0) {
-    //       $item['bullets'][$bullet['sort'] - 1] = $bullet;
-    //     }
-    //     else {
-    //       $item['bullets'][] = $bullet;
-    //     }
-    //   }
-    // }
+    foreach ($xml_item_bullet->AgendaItem as $bullet_xml) {
+       
+       $item['bullets'][] = array(
+          'title' => (string) $bullet_xml->Name,
+          'body' => $xml_item_fulltext,
+       ); 
+       #error_log(print_r("FullText => ".$item['bullets'], 1));
+     }
     // Process attachments.
 #error_log(print_r($xml_item_document->Attachments, 1 )); 
     foreach ($xml_item_document->Attachments as $enclosures) {
-        #error_log(print_r($enclosure, 1 )); 
+        #error_log(print_r($encliosure, 1 )); 
       foreach ($enclosures->Attachment as $enclosure) {
-        #error_log(print_r($enclosure, 1 )); 
+       // error_log(print_r("Fulltext -- > : ".$enclosure->FullText, 1 )); 
         $enclosure_item['filename_in'] = (string) $enclosure->PDFDocument;
         $enclosure_item['access'] = (string) $enclosure->PublishingType;
         if (strlen($enclosure_item['filename_in']) > 0 && $enclosure_item['access'] === 'SKAL PUBLICERES') {
@@ -246,8 +247,15 @@ function _os2web_edoc_esdh_mm_import_meeting_agenda_item($meeting, $xml) {
             'title' => trim((string) $enclosure->NeutralTitle),
             'access' => TRUE,
           );
+        /*  $item['bullets'][] = array(
+             'title' => trim((string) $enclosure->NeutralTitle),
+             'body' => $enclosure->FullText,
+
+          );*/
+         // error_log(print_r(" Bullet 0 => ".$item['bullets'][0]['title'], 1));
         }
       }
+
     }
   }
   #error_log(print_r($item, 1));
@@ -302,7 +310,7 @@ function _os2web_edoc_esdh_mm_order_addenums($drush = FALSE) {
     return;
   }
   $nodes = $nodes_result['node'];
-  error_log(print_r($nodes, 1));
+  // error_log(print_r($nodes, 1));
   // Load necessary fields into the node object.
   $fields = field_info_instances('node', 'meeting');
   field_attach_load('node', $nodes, FIELD_LOAD_CURRENT, array('field_id' => $fields['field_os2web_meetings_addendum']['field_id']));
