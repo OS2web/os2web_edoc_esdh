@@ -219,6 +219,7 @@ function _os2web_edoc_esdh_mm_import_meeting_agenda_item($meeting, $xml) {
     // 'body' => $xml_item_fulltext,
     ),
   );
+  error_log(print_r($item, 1));
 
   // Deny closed content.
   if ($item['access'] === 'SKAL PUBLICERES') {
