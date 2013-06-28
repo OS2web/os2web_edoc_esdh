@@ -92,15 +92,18 @@ function os2web_edoc_esdh_mm_import_meeting($meeting) {
           error_log ($error->message);
        }
     }
-
     if (is_object($manifest)) {
       $committee = (string) array_shift($manifest->xpath("/Meeting/Committee"));
+      $ref_state = (string) array_shift($manifest->xpath("/Meeting/MeetingState"));
       $meeting_date = (string) array_shift($manifest->xpath("/Meeting/MeetingDate"));
+      $meeting_id = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/MeetingAgendaItems/MeetingAgendaItem/Document/@documentid');
       $directory_name = dirname(drupal_realpath($file));
+      $meeting_id = (string) $meeting_id[0][documentid];
       // Check if the committee is allowed to publish.
       $publish_committee = array_map('trim', explode(',', variable_get('os2web_edoc_esdh_approved_committees', MM_DEFAULT_APPROVED)));
       if ($committee == '' || !in_array($committee, $publish_committee)) {
         watchdog('eDoc MM', 'Ignored agenda from "%committee" .', array('%committee' => $committee));
+        #error_log("NO IMPORT meeting compare " . $old_meeting__id . " - " . $meeting_id . "file " . $directory_name . " - " . $meeting_state);
         return FALSE;
       }
 
@@ -108,26 +111,39 @@ function os2web_edoc_esdh_mm_import_meeting($meeting) {
       $date_obj = date_create($meeting_date);
       date_timezone_set($date_obj, timezone_open('UTC'));
       $meeting_date = date_format($date_obj, 'Y-m-d H:i');
-
+      $meeting_agendas = $manifest->xpath("/Meeting/MeetingAgendaTypes/MeetingAgendaType/MeetingAgendaItems");
+      $meeting_pdf = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/PDFDocument');
+      $meeting_state = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/AgendaType');
+      $meeting_state = (string) $meeting_state[0]; 
+     error_log($meeting_state); 
+      $meeting_type = $manifest->xpath('/Meeting/MeetingState');
+      $meeting_type = (string) $meeting_type[0];
+      if($meeting_type == "Referat endeligt godkendt") {
+        $meeting_type = "Referat";
+      }
+      else {
+        $meeting_type = "Dagsorden";
+      }
+error_log($meeting_type);
       $meeting = array(
-        'sys_id' => $directory_name,
+        'system_id' => $meeeeting_id,
+        'meeting_id' => $meeting_id,
+        'meeting_sub_id' => $meeting_id,
         'committee' => $committee,
-        'title' => $committee,
+        'title' => $committee . " - " . $meeting_date . " - " . $meeting_type . " - " . $ref_state . " - " . $meeting_id,
         'uri' => strstr($file , 'eDocAgendaPublishing.xml', TRUE),
         'meeting_date' => $meeting_date,
       );
-      $meeting_agendas = $manifest->xpath("/Meeting/MeetingAgendaTypes/MeetingAgendaType/MeetingAgendaItems");
-      $meeting_state = $manifest->xpath('/Meeting/MeetingState');
-      $meeting_type = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/AgendaType');
-      $meeting_pdf = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/PDFDocument');
-      $meeting['state'] = (string) $meeting_state[0];
-      $meeting['type'] = (string) $meeting_type[0];
+      $meeting['type'] = $meeting_type;
+      $meeting['state'] = $meeting_state;
       $meeting['pdf'] = (string) $meeting_pdf[0];
       if (empty($meeting_agendas)) {
         watchdog('eDoc MM', 'Empty list of import items in %file.', array('%file' => $file), WATCHDOG_WARNING);
       }
+          $old_meeting_id = $meeting_id;
 
       foreach ($meeting_agendas as $meeting_agenda) {
+        #error_log("meeting compare " . $old_meeting__id . " - " . $meeting_id . "file " . $directory_name . " - " . $meeting_state . " - " . $meeting_type);
   #error_log(print_r($meeting_agenda, 1));
         $imported = _os2web_edoc_esdh_mm_import_meeting_agenda($meeting, $meeting_agenda);
         if (is_array($imported)) {
@@ -217,11 +233,11 @@ function _os2web_edoc_esdh_mm_import_meeting_agenda_item($meeting, $xml) {
   if ($item['access'] === 'SKAL PUBLICERES') {
     // Process bullets.
      foreach ($xml_item_bullet->Attachment as $bullet_xml) {
-            error_log("***********************");
+            #error_log("***********************");
         $bullet_title = (string) $bullet_xml->NeutralTitle;
         $bullet_body = (string) $bullet_xml->FullText;
         $bullet_access = $bullet_xml->PublishingType;
-            error_log("access " . $bullet_access . "Titel: " . $bullet_title);
+            #error_log("access " . $bullet_access . "Titel: " . $bullet_title);
         if (empty($bullet_body)) {
           $bullet_body = "Intet indhold";
         }
@@ -369,15 +385,15 @@ function _os2web_edoc_esdh_mm_order_addenums($drush = FALSE) {
         $addenum_to = is_array($addenum_to) ? array_shift(array_shift($addenum_to)) : FALSE;
         // Save time by only updating what is needed.
         if ($addenum_to != $primary->nid) {
-           error_log(basename(__FILE__) . ':' . __LINE__ . ' Var: $primary = ' . print_r($primary->nid, 1));
-           error_log(basename(__FILE__) . ':' . __LINE__ . ' Var: $addenum_to = ' . print_r($addenum_to, 1));
+           #error_log(basename(__FILE__) . ':' . __LINE__ . ' Var: $primary = ' . print_r($primary->nid, 1));
+           ##error_log(basename(__FILE__) . ':' . __LINE__ . ' Var: $addenum_to = ' . print_r($addenum_to, 1));
           $node->field_os2web_meetings_addendum[LANGUAGE_NONE][0]['nid'] = $primary->nid;
           node_save($node);
         }
       }
       else {
-        error_log('MARK - ' . basename(__FILE__) . ':' . __LINE__ . ' in ' . __FUNCTION__ . '()');
-        error_log(basename(__FILE__) . ':' . __LINE__ . " jm@bellcom.dk: wanted to delete $node->nid");
+        #error_log('MARK - ' . basename(__FILE__) . ':' . __LINE__ . ' in ' . __FUNCTION__ . '()');
+        #error_log(basename(__FILE__) . ':' . __LINE__ . " jm@bellcom.dk: wanted to delete $node->nid");
         // node_delete($node->nid);
       }
       // Remove node from final nids_with_addendums.
