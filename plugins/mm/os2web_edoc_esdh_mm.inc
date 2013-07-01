@@ -93,17 +93,30 @@ function os2web_edoc_esdh_mm_import_meeting($meeting) {
        }
     }
     if (is_object($manifest)) {
+
+      // Setting the XML file to load - don't think we need this anymore.
+      $directory_name = dirname(drupal_realpath($file));
+
+      // Collecting agenda data
       $committee = (string) array_shift($manifest->xpath("/Meeting/Committee"));
       $ref_state = (string) array_shift($manifest->xpath("/Meeting/MeetingState"));
       $meeting_date = (string) array_shift($manifest->xpath("/Meeting/MeetingDate"));
       $meeting_id = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/MeetingAgendaItems/MeetingAgendaItem/Document/@documentid');
-      $directory_name = dirname(drupal_realpath($file));
       $meeting_id = (string) $meeting_id[0][documentid];
+      $meeting_pdf = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/PDFDocument');
+      $meeting_pdf = (string) $meeting_pdf[0];
+      $meeting_state = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/AgendaType');
+      $meeting_state = (string) $meeting_state[0]; 
+      $meeting_type = $manifest->xpath('/Meeting/MeetingState');
+      $meeting_type = (string) $meeting_type[0];
+
+      // Collecting agenda items
+      $meeting_agendas = $manifest->xpath("/Meeting/MeetingAgendaTypes/MeetingAgendaType/MeetingAgendaItems");
+      
       // Check if the committee is allowed to publish.
       $publish_committee = array_map('trim', explode(',', variable_get('os2web_edoc_esdh_approved_committees', MM_DEFAULT_APPROVED)));
       if ($committee == '' || !in_array($committee, $publish_committee)) {
         watchdog('eDoc MM', 'Ignored agenda from "%committee" .', array('%committee' => $committee));
-        #error_log("NO IMPORT meeting compare " . $old_meeting__id . " - " . $meeting_id . "file " . $directory_name . " - " . $meeting_state);
         return FALSE;
       }
 
@@ -111,20 +124,16 @@ function os2web_edoc_esdh_mm_import_meeting($meeting) {
       $date_obj = date_create($meeting_date);
       date_timezone_set($date_obj, timezone_open('UTC'));
       $meeting_date = date_format($date_obj, 'Y-m-d H:i');
-      $meeting_agendas = $manifest->xpath("/Meeting/MeetingAgendaTypes/MeetingAgendaType/MeetingAgendaItems");
-      $meeting_pdf = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/PDFDocument');
-      $meeting_state = $manifest->xpath('/Meeting/MeetingAgendaTypes/MeetingAgendaType/AgendaType');
-      $meeting_state = (string) $meeting_state[0]; 
-     error_log($meeting_state); 
-      $meeting_type = $manifest->xpath('/Meeting/MeetingState');
-      $meeting_type = (string) $meeting_type[0];
+
+      // Changing the meeting state to match ESDH Provider module
       if($meeting_type == "Referat endeligt godkendt") {
         $meeting_type = "Referat";
       }
       else {
         $meeting_type = "Dagsorden";
       }
-error_log($meeting_type);
+
+      // Saving the meeting data in ESDH Provider format. 
       $meeting = array(
         'system_id' => $meeeeting_id,
         'meeting_id' => $meeting_id,
@@ -133,18 +142,18 @@ error_log($meeting_type);
         'title' => $committee . " - " . $meeting_date . " - " . $meeting_type . " - " . $ref_state . " - " . $meeting_id,
         'uri' => strstr($file , 'eDocAgendaPublishing.xml', TRUE),
         'meeting_date' => $meeting_date,
+        'meeting_type' => $meeting_type,
+        'meeting_state' => $meeting_state,
+        'meeting_pdf' => $meeting_pdf,
       );
-      $meeting['type'] = $meeting_type;
-      $meeting['state'] = $meeting_state;
-      $meeting['pdf'] = (string) $meeting_pdf[0];
+
+      // Error logging to watchdog if the agenda item list is empty
       if (empty($meeting_agendas)) {
         watchdog('eDoc MM', 'Empty list of import items in %file.', array('%file' => $file), WATCHDOG_WARNING);
       }
-          $old_meeting_id = $meeting_id;
 
       foreach ($meeting_agendas as $meeting_agenda) {
-        #error_log("meeting compare " . $old_meeting__id . " - " . $meeting_id . "file " . $directory_name . " - " . $meeting_state . " - " . $meeting_type);
-  #error_log(print_r($meeting_agenda, 1));
+        // Importing each agenda item through the ESDH provider module
         $imported = _os2web_edoc_esdh_mm_import_meeting_agenda($meeting, $meeting_agenda);
         if (is_array($imported)) {
           $imported['publish'] = TRUE;
@@ -153,6 +162,7 @@ error_log($meeting_type);
       }
     }
     else {
+      // Error logging to watchdog if the XML failde to parse. Check if all illegal characters are in the remove list. 
       watchdog('eDoc MM', 'Failed to parse XML in %file during import.', array('%file' => $file), WATCHDOG_WARNING);
     }
   }
@@ -232,49 +242,42 @@ function _os2web_edoc_esdh_mm_import_meeting_agenda_item($meeting, $xml) {
   // Deny closed content.
   if ($item['access'] === 'SKAL PUBLICERES') {
     // Process bullets.
-     foreach ($xml_item_bullet->Attachment as $bullet_xml) {
-            #error_log("***********************");
-        $bullet_title = (string) $bullet_xml->NeutralTitle;
-        $bullet_body = (string) $bullet_xml->FullText;
-        $bullet_access = $bullet_xml->PublishingType;
-            #error_log("access " . $bullet_access . "Titel: " . $bullet_title);
-        if (empty($bullet_body)) {
-          $bullet_body = "Intet indhold";
+    foreach ($xml_item_bullet->Attachment as $bullet_xml) {
+      $bullet_title = (string) $bullet_xml->NeutralTitle;
+      $bullet_body = (string) $bullet_xml->FullText;
+      $bullet_access = $bullet_xml->PublishingType;
+      if (empty($bullet_body)) {
+        $bullet_body = "Intet indhold";
+      }
+      else {
+        if($bullet_access == 'SKAL PUBLICERES') {
         }
         else {
-          if($bullet_access == 'SKAL PUBLICERES') {
-          }
-	  else {
-            $bullet_body = "Dette er et lukket punkt. Du kan læse selve indstillingen" . $bullet_xml['access'];
-	  }
+          $bullet_body = "Dette er et lukket punkt. Du kan læse selve indstillingen" . $bullet_xml['access'];
         }
-        if (!empty($bullet_title)) {
-          $item['bullets'][] = array(
-            'title' => (string) $bullet_title,
-            'body' => (string) $bullet_body,
+      }
+      if (!empty($bullet_title)) {
+        $item['bullets'][] = array(
+          'title' => (string) $bullet_title,
+          'body' => (string) $bullet_body,
+        );
+      }
+     
+      // Process enclsures.
+      foreach ($xml_item_bullet->Attachment as $enclosure) {
+        $enclosure_item['filename_in'] = (string) $enclosure->PDFDocument;
+        $enclosure_item['access'] = (string) $enclosure->PublishingType;
+        if (strlen($enclosure_item['filename_in']) > 0 && $enclosure_item['access'] == 'SKAL PUBLICERES') {
+          $item['enclosures'][] = array(
+            'uri' => implode('/', array(
+            trim($meeting['uri'], "/"),
+            $enclosure_item['filename_in'])),
+            'title' => trim((string) $enclosure->Title),
+            'access' => TRUE,
           );
         }
-     
-        # error_log(print_r($item, 1));
-        // Process enclsures.
-       # foreach ($xml_item_document->Attachment as $enclosures) {
-          foreach ($xml_item_bullet->Attachment as $enclosure) {
-            $enclosure_item['filename_in'] = (string) $enclosure->PDFDocument;
-            $enclosure_item['access'] = (string) $enclosure->PublishingType;
-	    #error_log(print_r($enclosure,1));
-            if (strlen($enclosure_item['filename_in']) > 0 && $enclosure_item['access'] == 'SKAL PUBLICERES') {
-              $item['enclosures'][] = array(
-              'uri' => implode('/', array(
-              trim($meeting['uri'], "/"),
-              $enclosure_item['filename_in'])),
-              'title' => trim((string) $enclosure->Title),
-              'access' => TRUE,
-              );
-            }
-           }
-         #error_log(print_r($item['enclosures'],1)); 
-       # }
-     }
+      }
+    }
   }
   $item += os2web_esdh_provider_default_item();
   return $item;
