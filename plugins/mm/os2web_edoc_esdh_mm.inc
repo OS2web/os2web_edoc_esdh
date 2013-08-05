@@ -79,8 +79,13 @@ function os2web_edoc_esdh_mm_import_meeting($meeting) {
   }
   $meetings = array();
   if (is_file(drupal_realpath($file))) {
+<<<<<<< HEAD
     
     libxml_use_internal_errors(true);
+=======
+
+    //libxml_use_internal_errors(true);
+>>>>>>> balk_merge
     $manifest = simplexml_load_string(utf8_for_xml(file_get_contents(drupal_realpath($file))), 'SimpleXMLElement', LIBXML_NOWARNING); 
 
     libxml_clear_errors();
@@ -135,16 +140,16 @@ function os2web_edoc_esdh_mm_import_meeting($meeting) {
 
       // Saving the meeting data in ESDH Provider format. 
       $meeting = array(
-        'system_id' => $meeeeting_id,
+        'system_id' => $meeting_id,
         'meeting_id' => $meeting_id,
         'meeting_sub_id' => $meeting_id,
         'committee' => $committee,
         'title' => $committee . " - " . $meeting_date . " - " . $meeting_type . " - " . $ref_state . " - " . $meeting_id,
         'uri' => strstr($file , 'eDocAgendaPublishing.xml', TRUE),
-        'meeting_date' => $meeting_date,
-        'meeting_type' => $meeting_type,
+        'meeting_date_start' => $meeting_date,
+        'type' => $meeting_type,
         'meeting_state' => $meeting_state,
-        'meeting_pdf' => $meeting_pdf,
+        'full_doc' => $meeting_pdf,
       );
 
       // Error logging to watchdog if the agenda item list is empty
